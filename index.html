@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Go/No-Go Visual Search Task</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        #jspsych-content {
+            width: 1024px;
+            height: 768px;
+            background: white;
+            position: relative;
+            border: 2px solid #333;
+        }
+        .trial-screen {
+            text-align: center;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .trial-screen.start-screen, .trial-screen.instructions, .trial-screen.end-screen {
+            padding: 50px;
+        }
+        .stimulus {
+            position: absolute;
+            transform: translate(-50%, -50%);
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .button:hover { background-color: #45a049; }
+        .hidden { display: none; }
+        .fixation {
+            font-size: 48px;
+            color: #333;
+        }
+        .input-field {
+            margin: 10px 0;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 100px;
+            text-align: center;
+        }
+        .label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="jspsych-content">
+        <div id="start-screen" class="trial-screen start-screen">
+            <div style="margin: 20px 0;">
+                <span class="label">Participant ID:</span>
+                <input type="text" id="participant-id" class="input-field" placeholder="e.g., P001">
+            </div>
+            <button class="button" onclick="startExperiment()">Start Task</button>
+        </div>
+        
+        <div id="instructions" class="trial-screen instructions hidden">
+        </div>
+        
+        <div id="trial-screen" class="trial-screen hidden">
+            <div id="fixation" class="fixation">+</div>
+            <div id="stimuli-container" style="position: relative; width: 100%; height: 100%;">
+            </div>
+        </div>
+        
+        <div id="end-screen" class="trial-screen end-screen hidden">
+            <h2>Experiment Complete!</h2>
+            <p>Thank you for participating.</p>
+            <div id="data-summary"></div>
+        </div>
+    </div>
+
+    <script>
+        // Experiment data
+        let experimentData = {
+            participantId: null,
+            startTime: null,
+            endTime: null,
+            blocks: [],
+            blockOrder: [], // Track the order blocks were completed
+            currentBlock: 2,
+            currentTrial: 0,
+            totalTrials: 50,
+            quadrantReactionTimes: {
+                'upper_left': [],
+                'upper_right': [],
+                'lower_left': [],
+                'lower_right': []
+            }
+        };
+        
+        // Stimulus pools for 4 groups
+        let stimulusPools = {
+            group1: [],
+            group2: [],
+            group3: [],
+            group4: []
+        };
+        
+        // Blocks: minimal per-block config
+        const blocks = [
+            {
+                id: 1,
+                distractorGroup: 'group4',
+                targetGroup: 'group3',
+                instructionsTitle: 'Block 1',
+                instructionsBody: 'Press SPACE when a TARGET appears. Do nothing on No-Go trials.'
+            },
+            {
+                id: 2,
+                distractorGroup: 'group3',
+                targetGroup: 'group4',
+                instructionsTitle: 'Block 2',
+                instructionsBody: 'Press SPACE when a TARGET appears. Do nothing on No-Go trials.'
+            }
+        ];
+        
+        function showInstructionsForBlock(blockNumber) {
+            experimentData.currentBlock = blockNumber;
+            const instructionsDiv = document.getElementById('instructions');
+            const info = blocks.find(b => b.id === blockNumber) || { title: `Block ${blockNumber}`, body: 'Follow on-screen rules.' };
+            instructionsDiv.innerHTML = `
+                <h2>${info.instructionsTitle}</h2>
+                <p>${info.instructionsBody}</p>
+                <button class="button" onclick="startBlock(${blockNumber})">Start Block ${blockNumber}</button>
+            `;
+            document.getElementById('start-screen').classList.add('hidden');
+            instructionsDiv.classList.remove('hidden');
+        }
+        
+        async function startBlock(blockNumber) {
+            document.getElementById('instructions').classList.add('hidden');
+            document.getElementById('trial-screen').classList.remove('hidden');
+            
+            const stimuliLoaded = await loadStimulusPools();
+            if (!stimuliLoaded) {
+                alert('No stimulus images found. Please add PNG files to stimuli/group1/, stimuli/group2/, stimuli/group3/, and stimuli/group4/ folders.');
+                return;
+            }
+            
+            experimentData.blocks.push({
+                blockId: `block_${blockNumber}`,
+                blockNumber: blockNumber,
+                startTime: new Date().toISOString(),
+                trials: []
+            });
+            
+            // Track block order
+            experimentData.blockOrder.push(blockNumber);
+            
+            experimentData.currentTrial = 0;
+            runTrial();
+        }
+        
+        const settings = {
+            blankDuration: 500,
+            stimulusDuration: 3000,
+            stimulusWidth: 310, // Width in pixels for stimuli
+            jitterRange: 50,
+            // True center of each quadrant in 1024x768 canvas
+            quadrantCenters: {
+                'upper_left': {x: 256, y: 192},
+                'upper_right': {x: 768, y: 192},
+                'lower_left': {x: 256, y: 576},
+                'lower_right': {x: 768, y: 576}
+            }
+        };
+        
+        // Preloaded images cache
+        let preloadedImages = {};
+        
+        // Initialize stimulus pools with embedded file lists (GitHub Pages compatible)
+        function initializeStimulusPools() {
+            // Group 1 - scatter_neg files
+            const group1Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group1Files.push(`stimuli/group1/scatter_neg_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 2 - scatter_pos files
+            const group2Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group2Files.push(`stimuli/group2/scatter_pos_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 3 - bars_neg files
+            const group3Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group3Files.push(`stimuli/group3/bars_neg_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 4 - bars_pos files
+            const group4Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group4Files.push(`stimuli/group4/bars_pos_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            stimulusPools.group1 = group1Files;
+            stimulusPools.group2 = group2Files;
+            stimulusPools.group3 = group3Files;
+            stimulusPools.group4 = group4Files;
+        }
+
+        // Load stimulus pools and preload all images (GitHub Pages compatible)
+        async function loadStimulusPools() {
+            try {
+                // Initialize stimulus pools with embedded file lists
+                initializeStimulusPools();
+                
+                console.log('Loaded stimuli pools:', stimulusPools);
+                
+                // Check if any stimuli were loaded
+                const totalStimuli = Object.values(stimulusPools).reduce((sum, pool) => sum + pool.length, 0);
+                if (totalStimuli === 0) {
+                    console.log('No PNG stimuli found, using fallback circles');
+                    return false;
+                }
+                
+                // Preload all images
+                await preloadAllImages();
+                
+                return true;
+            } catch (error) {
+                console.log('Error loading stimuli, using fallback circles:', error);
+                return false;
+            }
+        }
+        
+        // Preload all images to ensure they're cached
+        async function preloadAllImages() {
+            const allImagePaths = Object.values(stimulusPools).flat();
+            const totalImages = allImagePaths.length;
+            let loadedCount = 0;
+            
+            console.log(`Preloading ${totalImages} images...`);
+            updateLoadingProgress(0, totalImages);
+            
+            const preloadPromises = allImagePaths.map(imagePath => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        preloadedImages[imagePath] = img;
+                        loadedCount++;
+                        updateLoadingProgress(loadedCount, totalImages);
+                        resolve(img);
+                    };
+                    img.onerror = () => {
+                        console.warn(`Failed to load image: ${imagePath}`);
+                        loadedCount++;
+                        updateLoadingProgress(loadedCount, totalImages);
+                        resolve(null); // Don't reject, just continue
+                    };
+                    img.src = imagePath;
+                });
+            });
+            
+            await Promise.all(preloadPromises);
+            console.log(`Preloaded ${Object.keys(preloadedImages).length} images successfully`);
+        }
+        
+        // Update loading progress indicator (console only)
+        function updateLoadingProgress(loaded, total) {
+            const percentage = Math.round((loaded / total) * 100);
+            console.log(`Loading images: ${loaded}/${total} (${percentage}%)`);
+        }
+        
+        // Get random stimulus from specified group
+        function getRandomStimulus(group) {
+            const pool = stimulusPools[group];
+            if (pool && pool.length > 0) {
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+            return null; // Will fall back to circles
+        }
+        
+        function startExperiment() {
+            experimentData.participantId = document.getElementById('participant-id').value;
+            experimentData.startTime = new Date().toISOString();
+            showInstructionsForBlock(experimentData.currentBlock);
+        }
+        
+        function runTrial() {
+            if (experimentData.currentTrial >= experimentData.totalTrials) {
+                endExperiment();
+                return;
+            }
+            
+            // Generate random trial (50/50 go/no-go)
+            const isGoTrial = Math.random() < 0.5;
+            const trial = generateTrial(isGoTrial, experimentData.currentTrial + 1);
+            
+            // Show fixation cross
+            document.getElementById('fixation').style.display = 'block';
+            document.getElementById('stimuli-container').style.display = 'none';
+            
+            // After blank duration, show stimuli
+            setTimeout(() => {
+                showStimuli(trial);
+            }, settings.blankDuration);
+        }
+        
+        function generateTrial(isGoTrial, trialNumber) {
+            const quadrants = ['upper_left', 'upper_right', 'lower_left', 'lower_right'];
+            const targetQuadrant = isGoTrial ? quadrants[Math.floor(Math.random() * quadrants.length)] : null;
+            
+            // Get current block configuration
+            const currentBlockConfig = blocks.find(b => b.id === experimentData.currentBlock);
+            const distractorGroup = currentBlockConfig.distractorGroup;
+            const targetGroup = currentBlockConfig.targetGroup;
+            
+            const stimuli = quadrants.map(quadrant => {
+                const isTarget = (quadrant === targetQuadrant);
+                const stimulusGroup = isTarget ? targetGroup : distractorGroup;
+                const stimulusFile = getRandomStimulus(stimulusGroup);
+                
+                return {
+                    quadrant: quadrant,
+                    group: stimulusGroup,
+                    isTarget: isTarget,
+                    stimulusFile: stimulusFile
+                };
+            });
+            
+            return {
+                trialId: `${isGoTrial ? 'go' : 'no_go'}_trial_${trialNumber}`,
+                trialType: isGoTrial ? 'go' : 'no_go',
+                stimuli: stimuli,
+                distractorGroup: distractorGroup,
+                targetGroup: targetGroup,
+                targetQuadrant: targetQuadrant,
+                startTime: new Date().toISOString()
+            };
+        }
+        
+        function showStimuli(trial) {
+            document.getElementById('fixation').style.display = 'none';
+            document.getElementById('stimuli-container').style.display = 'block';
+            
+            // Clear previous stimuli
+            const container = document.getElementById('stimuli-container');
+            const existingStimuli = container.querySelectorAll('.stimulus');
+            existingStimuli.forEach(stimulus => stimulus.remove());
+            
+            // Add new stimuli
+            trial.stimuli.forEach(stimulus => {
+                const center = settings.quadrantCenters[stimulus.quadrant];
+                // Only vertical jitter: ±50 pixels
+                const jitterY = (Math.random() - 0.5) * 2 * settings.jitterRange;
+                const x = center.x;
+                const y = center.y + jitterY;
+                
+                const stimulusElement = document.createElement('div');
+                stimulusElement.className = 'stimulus';
+                stimulusElement.style.left = x + 'px';
+                stimulusElement.style.top = y + 'px';
+                
+                if (stimulus.stimulusFile && preloadedImages[stimulus.stimulusFile]) {
+                    // Use preloaded PNG image
+                    const img = preloadedImages[stimulus.stimulusFile].cloneNode();
+                    img.style.width = settings.stimulusWidth + 'px';
+                    img.style.height = 'auto'; // Scale height proportionally
+                    img.style.objectFit = 'contain';
+                    stimulusElement.appendChild(img);
+                } else {
+                    // Fallback to circle
+                    stimulusElement.style.width = settings.stimulusWidth + 'px';
+                    stimulusElement.style.height = settings.stimulusWidth + 'px';
+                    stimulusElement.style.borderRadius = '50%';
+                    stimulusElement.style.border = '2px solid #333';
+                    stimulusElement.style.backgroundColor = stimulus.isTarget ? 'red' : 'black';
+                }
+                
+                container.appendChild(stimulusElement);
+            });
+            
+            // Record when stimuli appear for reaction time calculation
+            const stimulusStartTime = new Date();
+            
+            // Set up response handling
+            let responded = false;
+            const responseHandler = (event) => {
+                if (event.code === 'Space' && !responded) {
+                    responded = true;
+                    const reactionTime = new Date() - stimulusStartTime;
+                    recordResponse(trial, 'space', reactionTime);
+                    document.removeEventListener('keydown', responseHandler);
+                    
+                    // Immediately advance to next trial (no delay)
+                    experimentData.currentTrial++;
+                    runTrial();
+                }
+            };
+            
+            document.addEventListener('keydown', responseHandler);
+            
+            // Auto-advance after stimulus duration if no response
+            setTimeout(() => {
+                if (!responded) {
+                    recordResponse(trial, null, settings.stimulusDuration);
+                    document.removeEventListener('keydown', responseHandler);
+                    experimentData.currentTrial++;
+                    runTrial();
+                }
+            }, settings.stimulusDuration);
+        }
+        
+        function recordResponse(trial, response, responseTime) {
+            const isGoTrial = trial.trialType === 'go';
+            const wasSpace = response === 'space';
+            const accuracy = isGoTrial ? wasSpace : !wasSpace;
+            
+            // Record RTs per quadrant for go trials only (kept for summary if needed)
+            if (isGoTrial && wasSpace && trial.targetQuadrant) {
+                experimentData.quadrantReactionTimes[trial.targetQuadrant].push(responseTime);
+            }
+            
+            const currentBlock = experimentData.blocks[experimentData.blocks.length - 1];
+            currentBlock.trials.push({
+                participantId: experimentData.participantId || null,
+                trialType: trial.trialType,                // 'go' | 'no_go'
+                responseTime: responseTime,                // ms from stimulus onset
+                accuracy: accuracy,                        // boolean
+                targetQuadrant: trial.targetQuadrant       // quadrant or null
+            });
+        }
+        
+        function endExperiment() {
+            document.getElementById('trial-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.remove('hidden');
+            
+            experimentData.endTime = new Date().toISOString();
+            
+            const allTrials = experimentData.blocks.flatMap(block => block.trials);
+            const goTrials = allTrials.filter(t => t.trialType === 'go');
+            const noGoTrials = allTrials.filter(t => t.trialType === 'no_go');
+            
+            const goAccuracy = goTrials.filter(t => t.accuracy).length / goTrials.length * 100;
+            const noGoAccuracy = noGoTrials.filter(t => t.accuracy).length / noGoTrials.length * 100;
+            
+            // Helper to compute quadrant averages for a set of trials
+            function quadrantAveragesForTrials(trials) {
+                const buckets = {
+                    upper_left: [], upper_right: [], lower_left: [], lower_right: []
+                };
+                trials.forEach(t => {
+                    if (t.trialType === 'go' && t.accuracy && typeof t.responseTime === 'number' && t.targetQuadrant) {
+                        buckets[t.targetQuadrant].push(t.responseTime);
+                    }
+                });
+                const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : null;
+                return {
+                    upper_left: mean(buckets.upper_left),
+                    upper_right: mean(buckets.upper_right),
+                    lower_left: mean(buckets.lower_left),
+                    lower_right: mean(buckets.lower_right)
+                };
+            }
+            
+            // Build per-block summaries with quadrant means
+            const blockSummaries = experimentData.blocks.map(block => {
+                const qa = quadrantAveragesForTrials(block.trials);
+                return {
+                    participantId: experimentData.participantId || '',
+                    blockId: block.blockId,
+                    avgUL: qa.upper_left,
+                    avgUR: qa.upper_right,
+                    avgLL: qa.lower_left,
+                    avgLR: qa.lower_right,
+                    numTrials: (block.trials || []).length
+                };
+            });
+            
+            // Render minimal summary
+            const lines = blockSummaries.map(s => `Block ${s.blockId}: UL=${s.avgUL ?? 'NA'} ms, UR=${s.avgUR ?? 'NA'} ms, LL=${s.avgLL ?? 'NA'} ms, LR=${s.avgLR ?? 'NA'} ms, N=${s.numTrials}`);
+            document.getElementById('data-summary').innerHTML = `
+                <h3>Data Summary</h3>
+                <p>Go Trials Accuracy: ${isFinite(goAccuracy) ? goAccuracy.toFixed(1) : 'NA'}%</p>
+                <p>No-Go Trials Accuracy: ${isFinite(noGoAccuracy) ? noGoAccuracy.toFixed(1) : 'NA'}%</p>
+                <pre style="text-align: left; background: #f5f5f5; padding: 10px; border-radius: 5px; max-height: 300px; overflow-y: auto;">${lines.join('\n')}</pre>
+            `;
+            
+            // Save full data locally for backup
+            localStorage.setItem('experiment_data', JSON.stringify(experimentData));
+            console.log('Experiment completed. Data saved locally:', experimentData);
+            
+            // Send full hierarchical data to DataPipe
+            const dataPipeResult = await sendToDataPipe(experimentData);
+            console.log('DataPipe result:', dataPipeResult);
+            
+            // POST compact summaries (participantId, blockId, four quadrant averages)
+            if (GOOGLE_SHEETS_WEBAPP_URL) {
+                blockSummaries.forEach(async (summary) => {
+                    const payload = {
+                        participantId: summary.participantId,
+                        blockId: summary.blockId,
+                        avgUL: summary.avgUL ?? '',
+                        avgUR: summary.avgUR ?? '',
+                        avgLL: summary.avgLL ?? '',
+                        avgLR: summary.avgLR ?? '',
+                        numTrials: summary.numTrials
+                    };
+                    const res = await postJSON(GOOGLE_SHEETS_WEBAPP_URL, payload);
+                    console.log('Posted to Sheets:', payload, res);
+                });
+            }
+        }
+
+        // Remote data collection URLs
+        const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx4T6l_Buh5NxXHU3rozNrCbsJpvJXOiE0ztosCfvERw27tCb4LYmYd-x6s8LuD_zYoBA/exec';
+        const DATAPIPE_URL = 'https://pipe.jspsych.org/api/data/';
+        const EXPERIMENT_ID = 'roHPeHl0eGAg';
+        
+        // Send data to DataPipe
+        async function sendToDataPipe(data) {
+            try {
+                const filename = `${data.participantId || 'unknown'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+                
+                const response = await fetch(DATAPIPE_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*",
+                    },
+                    body: JSON.stringify({
+                        experimentID: EXPERIMENT_ID,
+                        filename: filename,
+                        data: JSON.stringify(data),
+                    }),
+                });
+                
+                return { ok: response.ok, status: response.status };
+            } catch (e) {
+                console.error('Failed to send data to DataPipe:', e);
+                return { ok: false, error: String(e) };
+            }
+        }
+
+        async function postJSON(url, data) {
+            try {
+                const params = new URLSearchParams();
+                Object.keys(data).forEach(key => {
+                    const value = data[key];
+                    params.append(key, value === null || value === undefined ? '' : String(value));
+                });
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: params.toString()
+                });
+                return { ok: res.ok, status: res.status };
+            } catch (e) {
+                console.error('Failed to POST JSON', e);
+                return { ok: false, error: String(e) };
+            }
+        }
+    </script>
+</body>
+</html>
