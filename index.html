@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Go/No-Go Visual Search Task</title>
+    <style>
+        body {
+            font-family: serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        #jspsych-content {
+            width: 1024px;
+            height: 768px;
+            background: white;
+            position: relative;
+            border: 2px solid #333;
+            transition: all 0.3s ease;
+        }
+        
+        /* Fullscreen styles */
+        .fullscreen-mode #jspsych-content {
+            width: 100vw !important;
+            height: 100vh !important;
+            border: none !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            z-index: 9999 !important;
+        }
+        
+        .fullscreen-mode body {
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        
+        #fullscreen-btn {
+            background-color: #333;
+            color: white;
+            border: 1px solid #000;
+            border-radius: 0px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: serif;
+            margin: 20px 0;
+        }
+        
+        #fullscreen-btn:hover {
+            background-color: #555;
+        }
+        
+        #fullscreen-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .trial-screen {
+            text-align: center;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .trial-screen.start-screen, .trial-screen.instructions, .trial-screen.end-screen {
+            padding: 50px;
+        }
+        .stimulus {
+            position: absolute;
+            transform: translate(-50%, -50%);
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .button:hover { background-color: #45a049; }
+        .button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .hidden { display: none; }
+        .fixation {
+            font-size: 48px;
+            color: #333;
+        }
+        .input-field {
+            margin: 10px 0;
+            padding: 5px;
+            border: 1px solid #000;
+            border-radius: 0px;
+            font-size: 14px;
+            font-family: serif;
+            width: 120px;
+            text-align: center;
+        }
+        .label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="jspsych-content">
+        <div id="start-screen" class="trial-screen start-screen">
+            <button id="fullscreen-btn" onclick="toggleFullscreen()">Enter Fullscreen Mode</button>
+            <button id="start-btn" class="button" onclick="startExperiment()" disabled>Start</button>
+        </div>
+        
+        <div id="instructions" class="trial-screen instructions hidden">
+        </div>
+        
+        <div id="trial-screen" class="trial-screen hidden">
+            <div id="fixation" class="fixation">+</div>
+            <div id="stimuli-container" style="position: relative; width: 100%; height: 100%;">
+            </div>
+        </div>
+        
+        <div id="end-screen" class="trial-screen end-screen hidden">
+            <h2>Experiment Complete!</h2>
+            <p>Thank you for participating.</p>
+            <div id="data-summary"></div>
+        </div>
+    </div>
+
+    <script>
+        // Experiment data
+        let experimentData = {
+            participantId: null,
+            startTime: null,
+            endTime: null,
+            blocks: [],
+            blockOrder: [], // Track the order blocks were completed
+            currentBlockIndex: 0, // Index in the blocksToRun array
+            currentTrial: 0,
+            trialsPerBlock: 50,
+            quadrantReactionTimes: {
+                'upper_left': [],
+                'upper_right': [],
+                'lower_left': [],
+                'lower_right': []
+            }
+        };
+        
+        // Define the blocks to run (will be randomized)
+        let blocksToRun = [1,2]; // Will be randomized
+        
+        // Fisher-Yates shuffle algorithm to randomize block order
+        function shuffleArray(array) {
+            const shuffled = [...array]; // Create a copy
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        }
+        
+        // Randomize the block order when the page loads
+        blocksToRun = shuffleArray(blocksToRun);
+        
+        // Stimulus pools for 6 groups
+        let stimulusPools = {
+            group1: [],
+            group2: [],
+            group3: [],
+            group4: [],
+            group5: [],
+            group6: []
+        };
+        
+        // Sub-blocks: reference specific stimulus groups
+        const subBlocks = {
+            subblock_A: {
+                id: 'subblock_A',
+                distractorGroup: 'group4',
+                targetGroup: 'group3',
+                name: 'Sub-block A',
+                instructionsTitle: 'Task Instructions',
+                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+            },
+            subblock_B: {
+                id: 'subblock_B',
+                distractorGroup: 'group3',
+                targetGroup: 'group4',
+                name: 'Sub-block B',
+                instructionsTitle: 'Task Instructions', 
+                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+            },
+            subblock_C: {
+                id: 'subblock_C',
+                distractorGroup: 'group2',
+                targetGroup: 'group1',
+                name: 'Sub-block C',
+                instructionsTitle: 'Task Instructions',
+                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+            },
+            subblock_D: {
+                id: 'subblock_D',
+                distractorGroup: 'group1',
+                targetGroup: 'group2',
+                name: 'Sub-block D',
+                instructionsTitle: 'Task Instructions',
+                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+            }
+        };
+        
+        // Blocks: contain sub-blocks and alternation rules
+        const blocks = [
+            {
+                id: 1,
+                subBlocks: ['subblock_A', 'subblock_B'],
+                trialsPerSubBlock: 5, // trials per sub-block run
+                totalSubBlockRuns: 4, // total number of sub-block runs (A→B→A→B = 4 runs)
+                instructionsTitle: 'Bar Chart Task',
+                instructionsBody: '',
+                currentSubBlockIndex: 0,
+                currentSubBlockRun: 0, // track which sub-block run we're on
+                subBlockOrder: [] // Will be set when block starts
+            },
+            {
+                id: 2,
+                subBlocks: ['subblock_C', 'subblock_D'],
+                trialsPerSubBlock: 5, // trials per sub-block run
+                totalSubBlockRuns: 4, // total number of sub-block runs (C→D→C→D = 4 runs)
+                instructionsTitle: 'Scatter Plot Task',
+                instructionsBody: '',
+                currentSubBlockIndex: 0,
+                currentSubBlockRun: 0, // track which sub-block run we're on
+                subBlockOrder: [] // Will be set when block starts
+            }
+        ];
+        
+        function showInstructionsForBlock(blockNumber) {
+            experimentData.currentBlock = blockNumber;
+            
+            // Hide all screens first
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('trial-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.add('hidden');
+            
+            // Clear any remaining stimuli from previous block
+            const container = document.getElementById('stimuli-container');
+            const existingStimuli = container.querySelectorAll('.stimulus');
+            existingStimuli.forEach(stimulus => stimulus.remove());
+            
+            // Show instructions
+            const instructionsDiv = document.getElementById('instructions');
+            const info = blocks.find(b => b.id === blockNumber) || { title: `Block ${blockNumber}`, body: 'Follow on-screen rules.' };
+            instructionsDiv.innerHTML = `
+                <h2>${info.instructionsTitle}</h2>
+                <p>${info.instructionsBody}</p>
+                <button class="button" onclick="startBlock(${blockNumber})">Start</button>
+            `;
+            instructionsDiv.classList.remove('hidden');
+        }
+        
+        function showInstructionsForSubBlock(blockNumber, subBlockId) {
+            // Hide all screens first
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('trial-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.add('hidden');
+            
+            // Clear any remaining stimuli
+            const container = document.getElementById('stimuli-container');
+            const existingStimuli = container.querySelectorAll('.stimulus');
+            existingStimuli.forEach(stimulus => stimulus.remove());
+            
+            // Show sub-block instructions
+            const instructionsDiv = document.getElementById('instructions');
+            const subBlockInfo = subBlocks[subBlockId];
+            const blockInfo = blocks.find(b => b.id === blockNumber);
+            
+            instructionsDiv.innerHTML = `
+                <h2>${subBlockInfo.instructionsTitle}</h2>
+                <p>${subBlockInfo.instructionsBody}</p>
+                <button class="button" onclick="startSubBlock(${blockNumber}, '${subBlockId}')">Start</button>
+            `;
+            instructionsDiv.classList.remove('hidden');
+        }
+        
+        async function startBlock(blockNumber) {
+            const stimuliLoaded = await loadStimulusPools();
+            if (!stimuliLoaded) {
+                alert('No stimulus images found. Please add PNG files to stimuli/group1/, stimuli/group2/, stimuli/group3/, and stimuli/group4/ folders.');
+                return;
+            }
+            
+            // Get the current block configuration
+            const currentBlock = blocks.find(b => b.id === blockNumber);
+            
+            // Initialize sub-block alternation order (start with random sub-block)
+            const randomStart = Math.random() < 0.5 ? 0 : 1;
+            currentBlock.subBlockOrder = [randomStart, 1 - randomStart]; // e.g., [1, 0] or [0, 1]
+            currentBlock.currentSubBlockIndex = 0;
+            currentBlock.currentSubBlockRun = 0;
+            
+            experimentData.blocks.push({
+                blockId: `block_${blockNumber}`,
+                blockNumber: blockNumber,
+                startTime: new Date().toISOString(),
+                trials: [],
+                subBlockOrder: [...currentBlock.subBlockOrder] // Copy for data recording
+            });
+            
+            // Track block order
+            experimentData.blockOrder.push(blockNumber);
+            
+            experimentData.currentTrial = 0;
+            experimentData.currentSubBlockTrial = 0; // Track trials within current sub-block
+            
+            // Show instructions for the first sub-block
+            const firstSubBlockIndex = currentBlock.subBlockOrder[0];
+            const firstSubBlockId = currentBlock.subBlocks[firstSubBlockIndex];
+            showInstructionsForSubBlock(blockNumber, firstSubBlockId);
+        }
+        
+        function startSubBlock(blockNumber, subBlockId) {
+            document.getElementById('instructions').classList.add('hidden');
+            document.getElementById('trial-screen').classList.remove('hidden');
+            runTrial();
+        }
+        
+        const settings = {
+            blankDuration: 500,
+            stimulusDuration: 3000,
+            stimulusWidthRatio: 0.3, // 30% of canvas width (307px on 1024px canvas)
+            jitterRange: 50,
+            // Base quadrant centers for 1024x768, will be scaled dynamically
+            baseQuadrantCenters: {
+                'upper_left': {x: 0.25, y: 0.25},    // 25% from left, 25% from top
+                'upper_right': {x: 0.75, y: 0.25},   // 75% from left, 25% from top
+                'lower_left': {x: 0.25, y: 0.75},    // 25% from left, 75% from top
+                'lower_right': {x: 0.75, y: 0.75}    // 75% from left, 75% from top
+            }
+        };
+        
+        // Get current quadrant centers based on screen size
+        function getQuadrantCenters() {
+            const container = document.getElementById('jspsych-content');
+            const width = container.offsetWidth;
+            const height = container.offsetHeight;
+            
+            return {
+                'upper_left': {x: width * 0.25, y: height * 0.25},
+                'upper_right': {x: width * 0.75, y: height * 0.25},
+                'lower_left': {x: width * 0.25, y: height * 0.75},
+                'lower_right': {x: width * 0.75, y: height * 0.75}
+            };
+        }
+        
+        // Fullscreen toggle function
+        function toggleFullscreen() {
+            const body = document.body;
+            const btn = document.getElementById('fullscreen-btn');
+            const startBtn = document.getElementById('start-btn');
+            
+            if (body.classList.contains('fullscreen-mode')) {
+                // Exit fullscreen mode (disable start button again)
+                body.classList.remove('fullscreen-mode');
+                btn.textContent = 'Enter Fullscreen Mode';
+                startBtn.disabled = true;
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            } else {
+                // Enter fullscreen mode (enable start button)
+                body.classList.add('fullscreen-mode');
+                btn.textContent = 'Exit Fullscreen Mode';
+                startBtn.disabled = false;
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) {
+                    elem.mozRequestFullScreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                }
+            }
+        }
+        
+        // Preloaded images cache
+        let preloadedImages = {};
+        
+        // Initialize stimulus pools with embedded file lists (GitHub Pages compatible)
+        function initializeStimulusPools() {
+            // Group 1 - scatter_neg files
+            const group1Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group1Files.push(`stimuli/group1/scatter_neg_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 2 - scatter_pos files
+            const group2Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group2Files.push(`stimuli/group2/scatter_pos_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 3 - bars_neg files
+            const group3Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group3Files.push(`stimuli/group3/bars_neg_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 4 - bars_pos files
+            const group4Files = [];
+            for (let i = 1; i <= 60; i++) {
+                group4Files.push(`stimuli/group4/bars_pos_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 5 - bars_neg files (20 files)
+            const group5Files = [];
+            for (let i = 1; i <= 20; i++) {
+                group5Files.push(`stimuli/group5/bars_neg_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            // Group 6 - bars_pos files (20 files)
+            const group6Files = [];
+            for (let i = 1; i <= 20; i++) {
+                group6Files.push(`stimuli/group6/bars_pos_${i.toString().padStart(3, '0')}.png`);
+            }
+            
+            stimulusPools.group1 = group1Files;
+            stimulusPools.group2 = group2Files;
+            stimulusPools.group3 = group3Files;
+            stimulusPools.group4 = group4Files;
+            stimulusPools.group5 = group5Files;
+            stimulusPools.group6 = group6Files;
+        }
+
+        // Load stimulus pools and preload all images (GitHub Pages compatible)
+        async function loadStimulusPools() {
+            try {
+                // Initialize stimulus pools with embedded file lists
+                initializeStimulusPools();
+                
+                console.log('Loaded stimuli pools:', stimulusPools);
+                
+                // Check if any stimuli were loaded
+                const totalStimuli = Object.values(stimulusPools).reduce((sum, pool) => sum + pool.length, 0);
+                if (totalStimuli === 0) {
+                    console.log('No PNG stimuli found, using fallback circles');
+                    return false;
+                }
+                
+                // Preload all images
+                await preloadAllImages();
+                
+                return true;
+            } catch (error) {
+                console.log('Error loading stimuli, using fallback circles:', error);
+                return false;
+            }
+        }
+        
+        // Preload all images to ensure they're cached
+        async function preloadAllImages() {
+            const allImagePaths = Object.values(stimulusPools).flat();
+            const totalImages = allImagePaths.length;
+            let loadedCount = 0;
+            
+            console.log(`Preloading ${totalImages} images...`);
+            updateLoadingProgress(0, totalImages);
+            
+            const preloadPromises = allImagePaths.map(imagePath => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        preloadedImages[imagePath] = img;
+                        loadedCount++;
+                        updateLoadingProgress(loadedCount, totalImages);
+                        resolve(img);
+                    };
+                    img.onerror = () => {
+                        console.warn(`Failed to load image: ${imagePath}`);
+                        loadedCount++;
+                        updateLoadingProgress(loadedCount, totalImages);
+                        resolve(null); // Don't reject, just continue
+                    };
+                    img.src = imagePath;
+                });
+            });
+            
+            await Promise.all(preloadPromises);
+            console.log(`Preloaded ${Object.keys(preloadedImages).length} images successfully`);
+        }
+        
+        // Update loading progress indicator (console only)
+        function updateLoadingProgress(loaded, total) {
+            const percentage = Math.round((loaded / total) * 100);
+            console.log(`Loading images: ${loaded}/${total} (${percentage}%)`);
+        }
+        
+        // Get random stimulus from specified group
+        function getRandomStimulus(group) {
+            const pool = stimulusPools[group];
+            if (pool && pool.length > 0) {
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+            return null; // Will fall back to circles
+        }
+        
+        // Qualtrics integration
+        var QUALTRICS_ORIGIN = 'https://uwmadison.co1.qualtrics.com';
+        function finishAndReturn() {
+            // If Qualtrics opened this tab via JS, we can message it and close
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.postMessage('{"type":"TASK_DONE"}', QUALTRICS_ORIGIN);
+                } catch (e) { /* ignore */ }
+                window.close(); // closes this tab (works because it was script-opened from Qualtrics)
+                return;
+            }
+
+            // Fallback (if task was opened directly or opener got lost):
+            // Send them to a Qualtrics page (optional). Replace SV_xxx if you want a specific survey.
+            window.location.href = QUALTRICS_ORIGIN + '/jfe/form/SV_XXXXXXXXXXXX';
+        }
+
+        // Get participant ID from URL parameters on page load
+        let participantIdFromUrl = null;
+        window.addEventListener('DOMContentLoaded', function() {
+            const params = new URLSearchParams(window.location.search);
+            participantIdFromUrl = params.get('id') || params.get('ResponseID') || params.get('PID') || params.get('pid');
+            
+            if (participantIdFromUrl) {
+                console.log('Participant ID loaded from URL:', participantIdFromUrl);
+            } else {
+                console.warn('No participant ID found in URL parameters. Expected id, ResponseID, PID, or pid.');
+            }
+        });
+
+        function startExperiment() {
+            experimentData.participantId = participantIdFromUrl;
+            experimentData.startTime = new Date().toISOString();
+            
+            // Start with the first block in the sequence
+            const firstBlockNumber = blocksToRun[experimentData.currentBlockIndex];
+            showInstructionsForBlock(firstBlockNumber);
+        }
+        
+        function runTrial() {
+            const currentBlockNumber = blocksToRun[experimentData.currentBlockIndex];
+            const currentBlock = blocks.find(b => b.id === currentBlockNumber);
+            const totalTrialsPerBlock = currentBlock.trialsPerSubBlock * currentBlock.totalSubBlockRuns;
+            
+            // Check if current block is finished
+            if (experimentData.currentTrial >= totalTrialsPerBlock) {
+                // Move to next block
+                experimentData.currentBlockIndex++;
+                
+                // Check if all blocks are finished
+                if (experimentData.currentBlockIndex >= blocksToRun.length) {
+                    endExperiment();
+                    return;
+                }
+                
+                // Start next block
+                const nextBlockNumber = blocksToRun[experimentData.currentBlockIndex];
+                experimentData.currentTrial = 0; // Reset trial counter for new block
+                showInstructionsForBlock(nextBlockNumber);
+                return;
+            }
+            
+            // Check if we need to switch sub-blocks
+            if (experimentData.currentSubBlockTrial >= currentBlock.trialsPerSubBlock) {
+                // Move to next sub-block run
+                currentBlock.currentSubBlockRun++;
+                
+                // Check if we've completed all sub-block runs
+                if (currentBlock.currentSubBlockRun >= currentBlock.totalSubBlockRuns) {
+                    // This shouldn't happen as block should end, but safety check
+                    return;
+                }
+                
+                // Switch to next sub-block in alternation
+                currentBlock.currentSubBlockIndex = (currentBlock.currentSubBlockIndex + 1) % currentBlock.subBlocks.length;
+                experimentData.currentSubBlockTrial = 0; // Reset sub-block trial counter
+                
+                // Show instructions for the new sub-block
+                const newSubBlockIndex = currentBlock.subBlockOrder[currentBlock.currentSubBlockIndex];
+                const newSubBlockId = currentBlock.subBlocks[newSubBlockIndex];
+                showInstructionsForSubBlock(currentBlockNumber, newSubBlockId);
+                return; // Exit runTrial, will resume when sub-block instructions are dismissed
+            }
+            
+            // Generate random trial (50/50 go/no-go)
+            const isGoTrial = Math.random() < 0.5;
+            const trial = generateTrial(isGoTrial, experimentData.currentTrial + 1);
+            
+            // Show blank screen
+            document.getElementById('fixation').style.display = 'none';
+            document.getElementById('stimuli-container').style.display = 'none';
+            
+            // After blank duration, show stimuli
+            setTimeout(() => {
+                showStimuli(trial);
+            }, settings.blankDuration);
+        }
+        
+        function generateTrial(isGoTrial, trialNumber) {
+            const quadrants = ['upper_left', 'upper_right', 'lower_left', 'lower_right'];
+            const targetQuadrant = isGoTrial ? quadrants[Math.floor(Math.random() * quadrants.length)] : null;
+            
+            // Get current block and sub-block configuration
+            const currentBlockNumber = blocksToRun[experimentData.currentBlockIndex];
+            const currentBlock = blocks.find(b => b.id === currentBlockNumber);
+            
+            // Get current sub-block based on alternation
+            const currentSubBlockIndex = currentBlock.subBlockOrder[currentBlock.currentSubBlockIndex];
+            const currentSubBlockId = currentBlock.subBlocks[currentSubBlockIndex];
+            const currentSubBlock = subBlocks[currentSubBlockId];
+            
+            const distractorGroup = currentSubBlock.distractorGroup;
+            const targetGroup = currentSubBlock.targetGroup;
+            
+            const stimuli = quadrants.map(quadrant => {
+                const isTarget = (quadrant === targetQuadrant);
+                const stimulusGroup = isTarget ? targetGroup : distractorGroup;
+                const stimulusFile = getRandomStimulus(stimulusGroup);
+                
+                return {
+                    quadrant: quadrant,
+                    group: stimulusGroup,
+                    isTarget: isTarget,
+                    stimulusFile: stimulusFile
+                };
+            });
+            
+            return {
+                trialId: `${isGoTrial ? 'go' : 'no_go'}_trial_${trialNumber}`,
+                trialType: isGoTrial ? 'go' : 'no_go',
+                stimuli: stimuli,
+                distractorGroup: distractorGroup,
+                targetGroup: targetGroup,
+                targetQuadrant: targetQuadrant,
+                currentSubBlockId: currentSubBlockId,
+                subBlockTrial: experimentData.currentSubBlockTrial + 1,
+                startTime: new Date().toISOString()
+            };
+        }
+        
+        function showStimuli(trial) {
+            document.getElementById('fixation').style.display = 'none';
+            document.getElementById('stimuli-container').style.display = 'block';
+            
+            // Get containers
+            const stimuliContainer = document.getElementById('stimuli-container');
+            const canvasContainer = document.getElementById('jspsych-content');
+            
+            // Clear previous stimuli
+            const existingStimuli = stimuliContainer.querySelectorAll('.stimulus');
+            existingStimuli.forEach(stimulus => stimulus.remove());
+            
+            // Calculate dynamic stimulus width based on canvas size
+            const dynamicStimulusWidth = canvasContainer.offsetWidth * settings.stimulusWidthRatio;
+            
+            // Add new stimuli
+            trial.stimuli.forEach(stimulus => {
+                const quadrantCenters = getQuadrantCenters();
+                const center = quadrantCenters[stimulus.quadrant];
+                // Only vertical jitter: ±50 pixels
+                const jitterY = (Math.random() - 0.5) * 2 * settings.jitterRange;
+                const x = center.x;
+                const y = center.y + jitterY;
+                
+                const stimulusElement = document.createElement('div');
+                stimulusElement.className = 'stimulus';
+                stimulusElement.style.left = x + 'px';
+                stimulusElement.style.top = y + 'px';
+                
+                if (stimulus.stimulusFile && preloadedImages[stimulus.stimulusFile]) {
+                    // Use preloaded PNG image
+                    const img = preloadedImages[stimulus.stimulusFile].cloneNode();
+                    img.style.width = dynamicStimulusWidth + 'px';
+                    img.style.height = 'auto'; // Scale height proportionally
+                    img.style.objectFit = 'contain';
+                    stimulusElement.appendChild(img);
+                } else {
+                    // Fallback to circle
+                    stimulusElement.style.width = dynamicStimulusWidth + 'px';
+                    stimulusElement.style.height = dynamicStimulusWidth + 'px';
+                    stimulusElement.style.borderRadius = '50%';
+                    stimulusElement.style.border = '2px solid #333';
+                    stimulusElement.style.backgroundColor = stimulus.isTarget ? 'red' : 'black';
+                }
+                
+                stimuliContainer.appendChild(stimulusElement);
+            });
+            
+            // Record when stimuli appear for reaction time calculation
+            const stimulusStartTime = new Date();
+            
+            // Set up response handling
+            let responded = false;
+            const responseHandler = (event) => {
+                if (event.code === 'Space' && !responded) {
+                    responded = true;
+                    const reactionTime = new Date() - stimulusStartTime;
+                    recordResponse(trial, 'space', reactionTime);
+                    document.removeEventListener('keydown', responseHandler);
+                    
+                    // Immediately advance to next trial (no delay)
+                    experimentData.currentTrial++;
+                    experimentData.currentSubBlockTrial++;
+                    runTrial();
+                }
+            };
+            
+            document.addEventListener('keydown', responseHandler);
+            
+            // Auto-advance after stimulus duration if no response
+            setTimeout(() => {
+                if (!responded) {
+                    recordResponse(trial, null, settings.stimulusDuration);
+                    document.removeEventListener('keydown', responseHandler);
+                    experimentData.currentTrial++;
+                    experimentData.currentSubBlockTrial++;
+                    runTrial();
+                }
+            }, settings.stimulusDuration);
+        }
+        
+        function recordResponse(trial, response, responseTime) {
+            const isGoTrial = trial.trialType === 'go';
+            const wasSpace = response === 'space';
+            const accuracy = isGoTrial ? wasSpace : !wasSpace;
+            
+            // Record RTs per quadrant for go trials only (kept for summary if needed)
+            if (isGoTrial && wasSpace && trial.targetQuadrant) {
+                experimentData.quadrantReactionTimes[trial.targetQuadrant].push(responseTime);
+            }
+            
+            const currentBlock = experimentData.blocks[experimentData.blocks.length - 1];
+            currentBlock.trials.push({
+                participantId: experimentData.participantId || null,
+                trialType: trial.trialType,                // 'go' | 'no_go'
+                responseTime: responseTime,                // ms from stimulus onset
+                accuracy: accuracy,                        // boolean
+                targetQuadrant: trial.targetQuadrant,      // quadrant or null
+                subBlockId: trial.currentSubBlockId,       // which sub-block this trial belongs to
+                subBlockTrial: trial.subBlockTrial,        // trial number within sub-block
+                distractorGroup: trial.distractorGroup,   // stimulus group used for distractors
+                targetGroup: trial.targetGroup             // stimulus group used for targets
+            });
+        }
+        
+        async function endExperiment() {
+            document.getElementById('trial-screen').classList.add('hidden');
+            document.getElementById('end-screen').classList.remove('hidden');
+            
+            experimentData.endTime = new Date().toISOString();
+            
+            // Redirect back to Qualtrics immediately
+            finishAndReturn();
+            
+            // Build per-block summaries for data submission (no display)
+            const allTrials = experimentData.blocks.flatMap(block => block.trials);
+            
+            // Helper to compute quadrant averages for a set of trials
+            function quadrantAveragesForTrials(trials) {
+                const buckets = {
+                    upper_left: [], upper_right: [], lower_left: [], lower_right: []
+                };
+                trials.forEach(t => {
+                    if (t.trialType === 'go' && t.accuracy && typeof t.responseTime === 'number' && t.targetQuadrant) {
+                        buckets[t.targetQuadrant].push(t.responseTime);
+                    }
+                });
+                const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : null;
+                return {
+                    upper_left: mean(buckets.upper_left),
+                    upper_right: mean(buckets.upper_right),
+                    lower_left: mean(buckets.lower_left),
+                    lower_right: mean(buckets.lower_right)
+                };
+            }
+            
+            // Build per-block summaries for data submission
+            const blockSummaries = experimentData.blocks.map(block => {
+                const qa = quadrantAveragesForTrials(block.trials);
+                return {
+                    participantId: experimentData.participantId || '',
+                    blockId: block.blockId,
+                    avgUL: qa.upper_left,
+                    avgUR: qa.upper_right,
+                    avgLL: qa.lower_left,
+                    avgLR: qa.lower_right,
+                    numTrials: (block.trials || []).length
+                };
+            });
+            
+            // Save full data locally for backup
+            localStorage.setItem('experiment_data', JSON.stringify(experimentData));
+            console.log('Experiment completed. Data saved locally:', experimentData);
+            
+            // Send full hierarchical data to DataPipe
+            const dataPipeResult = await sendToDataPipe(experimentData);
+            console.log('DataPipe result:', dataPipeResult);
+            
+            // POST compact summaries (participantId, blockId, four quadrant averages)
+            if (GOOGLE_SHEETS_WEBAPP_URL) {
+                blockSummaries.forEach(async (summary) => {
+                    const payload = {
+                        participantId: summary.participantId,
+                        blockId: summary.blockId,
+                        avgUL: summary.avgUL ?? '',
+                        avgUR: summary.avgUR ?? '',
+                        avgLL: summary.avgLL ?? '',
+                        avgLR: summary.avgLR ?? '',
+                        numTrials: summary.numTrials
+                    };
+                    const res = await postJSON(GOOGLE_SHEETS_WEBAPP_URL, payload);
+                    console.log('Posted to Sheets:', payload, res);
+                });
+            }
+        }
+
+        // Remote data collection URLs
+        const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx4T6l_Buh5NxXHU3rozNrCbsJpvJXOiE0ztosCfvERw27tCb4LYmYd-x6s8LuD_zYoBA/exec';
+        const DATAPIPE_URL = 'https://pipe.jspsych.org/api/data/';
+        const EXPERIMENT_ID = 'roHPeHl0eGAg';
+        
+        // Send data to DataPipe
+        async function sendToDataPipe(data) {
+            try {
+                const filename = `${data.participantId || 'unknown'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+                const dataAsString = JSON.stringify(data, null, 2); // Pretty formatted JSON string
+                
+                const response = await fetch(DATAPIPE_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "*/*",
+                    },
+                    body: JSON.stringify({
+                        experimentID: EXPERIMENT_ID,
+                        data: dataAsString,
+                        filename: filename
+                    }),
+                });
+                
+                const result = await response.json();
+                return { ok: response.ok, status: response.status, result: result };
+            } catch (e) {
+                console.error('Failed to send data to DataPipe:', e);
+                return { ok: false, error: String(e) };
+            }
+        }
+
+        async function postJSON(url, data) {
+            try {
+                const params = new URLSearchParams();
+                Object.keys(data).forEach(key => {
+                    const value = data[key];
+                    params.append(key, value === null || value === undefined ? '' : String(value));
+                });
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: params.toString()
+                });
+                return { ok: res.ok, status: res.status };
+            } catch (e) {
+                console.error('Failed to POST JSON', e);
+                return { ok: false, error: String(e) };
+            }
+        }
+    </script>
+</body>
+</html>
