@@ -133,7 +133,7 @@
         };
         
         // Define the blocks to run (will be randomized)
-        let blocksToRun = [3]; // Will be randomized
+        let blocksToRun = [1,2,3]; // Will be randomized
         
         // Fisher-Yates shuffle algorithm to randomize block order
         function shuffleArray(array) {
@@ -174,7 +174,7 @@
                 targetGroup: 'group4',
                 name: 'Sub-block B',
                 instructionsTitle: 'Task Instructions', 
-                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+                instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
             },
             subblock_C: {
                 id: 'subblock_C',
@@ -190,7 +190,7 @@
                 targetGroup: 'group2',
                 name: 'Sub-block D',
                 instructionsTitle: 'Task Instructions',
-                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+                instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
             },
             subblock_E: {
                 id: 'subblock_E',
@@ -206,7 +206,7 @@
                 targetGroup: 'group6',
                 name: 'Sub-block F',
                 instructionsTitle: 'Task Instructions',
-                instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
+                instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
             }
         };
         
@@ -237,7 +237,7 @@
             {
                 id: 3,
                 subBlocks: ['subblock_E', 'subblock_F'],
-                trialsPerSubBlock: 5, // trials per sub-block run
+                trialsPerSubBlock: 60, // trials per sub-block run
                 totalSubBlockRuns: 4, // total number of sub-block runs (E→F→E→F = 4 runs)
                 instructionsTitle: 'Line Graph Task',
                 instructionsBody: '',
