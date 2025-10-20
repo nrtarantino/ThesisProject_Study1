@@ -931,15 +931,15 @@
             const needsReminder = accuracyTracking.consecutiveIncorrect >= 3 || 
                                  accuracyTracking.totalIncorrectInSubBlock >= 6;
             
-            if (needsReminder) {
+           // if (needsReminder) {
                 // Reset counters after showing reminder
-                accuracyTracking.consecutiveIncorrect = 0;
-                accuracyTracking.totalIncorrectInSubBlock = 0;
+          //      accuracyTracking.consecutiveIncorrect = 0;
+          //      accuracyTracking.totalIncorrectInSubBlock = 0;
                 
                 // Show reminder and pause trial progression
-                showReminderScreen(currentSubBlockId);
-                return true; // Indicate that trial progression should be paused
-            }
+        //        showReminderScreen(currentSubBlockId);
+        //        return true; // Indicate that trial progression should be paused
+        //    }
             
             return false; // Normal trial progression
         }
