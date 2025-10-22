@@ -150,60 +150,60 @@
         
         // Stimulus pools for 6 groups
         let stimulusPools = {
-            group1: [],
-            group2: [],
-            group3: [],
-            group4: [],
-            group5: [],
-            group6: []
+            scatter_neg: [],
+            scatter_pos: [],
+            bars_neg: [],
+            bars_pos: [],
+            lines_neg: [],
+            lines_pos: []
         };
         
         // Sub-blocks: reference specific stimulus groups
         const subBlocks = {
-            subblock_A: {
-                id: 'subblock_A',
-                distractorGroup: 'group4',
-                targetGroup: 'group3',
-                name: 'Sub-block A',
+            subblock_bars_neg: {
+                id: 'subblock_bars_neg',
+                distractorGroup: 'bars_pos',
+                targetGroup: 'bars_neg',
+                name: 'id',
                 instructionsTitle: 'Task Instructions',
                 instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
             },
-            subblock_B: {
-                id: 'subblock_B',
-                distractorGroup: 'group3',
-                targetGroup: 'group4',
+            subblock_bars_pos: {
+                id: 'subblock_bars_pos',
+                distractorGroup: 'bars_neg',
+                targetGroup: 'bars_pos',
                 name: 'Sub-block B',
                 instructionsTitle: 'Task Instructions', 
                 instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
             },
-            subblock_C: {
-                id: 'subblock_C',
-                distractorGroup: 'group2',
-                targetGroup: 'group1',
+            subblock_scatter_neg: {
+                id: 'subblock_scatter_neg',
+                distractorGroup: 'scatter_pos',
+                targetGroup: 'scatter_neg',
                 name: 'Sub-block C',
                 instructionsTitle: 'Task Instructions',
                 instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
             },
-            subblock_D: {
-                id: 'subblock_D',
-                distractorGroup: 'group1',
-                targetGroup: 'group2',
+            subblock_scatter_pos: {
+                id: 'subblock_scatter_pos',
+                distractorGroup: 'scatter_neg',
+                targetGroup: 'scatter_pos',
                 name: 'Sub-block D',
                 instructionsTitle: 'Task Instructions',
                 instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
             },
-            subblock_E: {
-                id: 'subblock_E',
-                distractorGroup: 'group6',
-                targetGroup: 'group5',
+            subblock_lines_neg: {
+                id: 'subblock_lines_neg',
+                distractorGroup: 'lines_pos',
+                targetGroup: 'lines_neg',
                 name: 'Sub-block E',
                 instructionsTitle: 'Task Instructions',
                 instructionsBody: 'Press SPACE when any of the 4 graphs display a decreasing slope. If none are decreasing, refrain from responding.'
             },
-            subblock_F: {
-                id: 'subblock_F',
-                distractorGroup: 'group5',
-                targetGroup: 'group6',
+            subblock_lines_pos: {
+                id: 'subblock_lines_pos',
+                distractorGroup: 'lines_neg',
+                targetGroup: 'lines_pos',
                 name: 'Sub-block F',
                 instructionsTitle: 'Task Instructions',
                 instructionsBody: 'Press SPACE when any of the 4 graphs display an increasing slope. If none are increasing, refrain from responding.'
@@ -214,8 +214,8 @@
         const blocks = [
             {
                 id: 1,
-                subBlocks: ['subblock_A', 'subblock_B'],
-                trialsPerSubBlock: 60, // trials per sub-block run
+                subBlocks: ['subblock_bars_neg', 'subblock_bars_pos'],
+                trialsPerSubBlock: 3, // trials per sub-block run
                 totalSubBlockRuns: 4, // total number of sub-block runs (A→B→A→B = 4 runs)
                 instructionsTitle: 'Bar Chart Task',
                 instructionsBody: '',
@@ -225,8 +225,8 @@
             },
             {
                 id: 2,
-                subBlocks: ['subblock_C', 'subblock_D'],
-                trialsPerSubBlock: 60, // trials per sub-block run
+                subBlocks: ['subblock_scatter_neg', 'subblock_scatter_pos'],
+                trialsPerSubBlock: 3, // trials per sub-block run
                 totalSubBlockRuns: 4, // total number of sub-block runs (C→D→C→D = 4 runs)
                 instructionsTitle: 'Scatter Plot Task',
                 instructionsBody: '',
@@ -236,8 +236,8 @@
             },
             {
                 id: 3,
-                subBlocks: ['subblock_E', 'subblock_F'],
-                trialsPerSubBlock: 60, // trials per sub-block run
+                subBlocks: ['subblock_lines_neg', 'subblock_lines_pos'],
+                trialsPerSubBlock: 3, // trials per sub-block run
                 totalSubBlockRuns: 4, // total number of sub-block runs (E→F→E→F = 4 runs)
                 instructionsTitle: 'Line Graph Task',
                 instructionsBody: '',
@@ -352,7 +352,7 @@
         async function startBlock(blockNumber) {
             const stimuliLoaded = await loadStimulusPools();
             if (!stimuliLoaded) {
-                alert('No stimulus images found. Please add PNG files to stimuli/group1/, stimuli/group2/, stimuli/group3/, and stimuli/group4/ folders.');
+                alert('No stimulus images found. Please add PNG files to stimuli/scatter_neg/, stimuli/scatter_pos/, stimuli/bars_neg/, and stimuli/bars_pos/ folders.');
                 return;
             }
             
@@ -471,47 +471,47 @@
         // Initialize stimulus pools with embedded file lists (GitHub Pages compatible)
         function initializeStimulusPools() {
             // Group 1 - scatter_neg files
-            const group1Files = [];
+            const scatter_negFiles = [];
             for (let i = 1; i <= 60; i++) {
-                group1Files.push(`stimuli/group1/scatter_neg_${i.toString().padStart(3, '0')}.png`);
+                scatter_negFiles.push(`stimuli/scatter_neg/scatter_neg_${i.toString().padStart(3, '0')}.png`);
             }
             
             // Group 2 - scatter_pos files
-            const group2Files = [];
+            const scatter_posFiles = [];
             for (let i = 1; i <= 60; i++) {
-                group2Files.push(`stimuli/group2/scatter_pos_${i.toString().padStart(3, '0')}.png`);
+                scatter_posFiles.push(`stimuli/scatter_pos/scatter_pos_${i.toString().padStart(3, '0')}.png`);
             }
             
             // Group 3 - bars_neg files
-            const group3Files = [];
+            const bars_negFiles = [];
             for (let i = 1; i <= 60; i++) {
-                group3Files.push(`stimuli/group3/bars_neg_${i.toString().padStart(3, '0')}.png`);
+                bars_negFiles.push(`stimuli/bars_neg/bars_neg_${i.toString().padStart(3, '0')}.png`);
             }
             
             // Group 4 - bars_pos files
-            const group4Files = [];
+            const bars_posFiles = [];
             for (let i = 1; i <= 60; i++) {
-                group4Files.push(`stimuli/group4/bars_pos_${i.toString().padStart(3, '0')}.png`);
+                bars_posFiles.push(`stimuli/bars_pos/bars_pos_${i.toString().padStart(3, '0')}.png`);
             }
             
             // Group 5 - lines_neg files (50 files)
-            const group5Files = [];
+            const lines_negFiles = [];
             for (let i = 1; i <= 50; i++) {
-                group5Files.push(`stimuli/group5/lines_neg_${i.toString().padStart(3, '0')}.png`);
+                lines_negFiles.push(`stimuli/lines_neg/lines_neg_${i.toString().padStart(3, '0')}.png`);
             }
             
             // Group 6 - lines_pos files (50 files)
-            const group6Files = [];
+            const lines_posFiles = [];
             for (let i = 1; i <= 50; i++) {
-                group6Files.push(`stimuli/group6/lines_pos_${i.toString().padStart(3, '0')}.png`);
+                lines_posFiles.push(`stimuli/lines_pos/lines_pos_${i.toString().padStart(3, '0')}.png`);
             }
             
-            stimulusPools.group1 = group1Files;
-            stimulusPools.group2 = group2Files;
-            stimulusPools.group3 = group3Files;
-            stimulusPools.group4 = group4Files;
-            stimulusPools.group5 = group5Files;
-            stimulusPools.group6 = group6Files;
+            stimulusPools.scatter_neg = scatter_negFiles;
+            stimulusPools.scatter_pos = scatter_posFiles;
+            stimulusPools.bars_neg = bars_negFiles;
+            stimulusPools.bars_pos = bars_posFiles;
+            stimulusPools.lines_neg = lines_negFiles;
+            stimulusPools.lines_pos = lines_posFiles;
         }
 
         // Load stimulus pools and preload all images (GitHub Pages compatible)
