@@ -944,82 +944,30 @@
             return false; // Normal trial progression
         }
         
-        async function endExperiment() {
-            document.getElementById('trial-screen').classList.add('hidden');
-            document.getElementById('end-screen').classList.remove('hidden');
-            
-            // Start animated dots loading
-            startLoadingDots();
-            
-            experimentData.endTime = new Date().toISOString();
-            
-            // Build per-block summaries for data submission (no display)
-            const allTrials = experimentData.blocks.flatMap(block => block.trials);
-            
-            // Helper to compute quadrant averages for a set of trials
-            function quadrantAveragesForTrials(trials) {
-                const buckets = {
-                    upper_left: [], upper_right: [], lower_left: [], lower_right: []
-                };
-                trials.forEach(t => {
-                    if (t.trialType === 'go' && t.accuracy && typeof t.responseTime === 'number' && t.targetQuadrant) {
-                        buckets[t.targetQuadrant].push(t.responseTime);
-                    }
-                });
-                const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : null;
-                return {
-                    upper_left: mean(buckets.upper_left),
-                    upper_right: mean(buckets.upper_right),
-                    lower_left: mean(buckets.lower_left),
-                    lower_right: mean(buckets.lower_right)
-                };
-            }
-            
-            // Build per-block summaries for data submission
-            const blockSummaries = experimentData.blocks.map(block => {
-                const qa = quadrantAveragesForTrials(block.trials);
-                return {
-                    participantId: experimentData.participantId || '',
-                    blockId: block.blockId,
-                    avgUL: qa.upper_left,
-                    avgUR: qa.upper_right,
-                    avgLL: qa.lower_left,
-                    avgLR: qa.lower_right,
-                    numTrials: (block.trials || []).length
-                };
-            });
-            
-            // Save full data locally for backup
-            localStorage.setItem('experiment_data', JSON.stringify(experimentData));
-            console.log('Experiment completed. Data saved locally:', experimentData);
-            
-            // Send full hierarchical data to DataPipe
-            const dataPipeResult = await sendToDataPipe(experimentData);
-            console.log('DataPipe result:', dataPipeResult);
-            
-            // POST compact summaries (participantId, blockId, four quadrant averages)
-            if (GOOGLE_SHEETS_WEBAPP_URL) {
-                blockSummaries.forEach(async (summary) => {
-                    const payload = {
-                        participantId: summary.participantId,
-                        blockId: summary.blockId,
-                        avgUL: summary.avgUL ?? '',
-                        avgUR: summary.avgUR ?? '',
-                        avgLL: summary.avgLL ?? '',
-                        avgLR: summary.avgLR ?? '',
-                        numTrials: summary.numTrials
-                    };
-                    const res = await postJSON(GOOGLE_SHEETS_WEBAPP_URL, payload);
-                    console.log('Posted to Sheets:', payload, res);
-                });
-            }
-            
-            // Now redirect back to Qualtrics (after data submission)
-            finishAndReturn();
-        }
+       async function endExperiment() {
+    document.getElementById('trial-screen').classList.add('hidden');
+    document.getElementById('end-screen').classList.remove('hidden');
+
+    // Start animated dots loading
+    startLoadingDots();
+
+    experimentData.endTime = new Date().toISOString();
+
+    // Local backup (optional but handy for debugging)
+    localStorage.setItem('experiment_data', JSON.stringify(experimentData));
+    console.log('Experiment completed. Data saved locally:', experimentData);
+
+    // Send full hierarchical data to DataPipe
+    const dataPipeResult = await sendToDataPipe(experimentData);
+    console.log('DataPipe result:', dataPipeResult);
+
+    // Redirect back to Qualtrics
+    finishAndReturn();
+}
+
 
         // Remote data collection URLs
-        const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbx4T6l_Buh5NxXHU3rozNrCbsJpvJXOiE0ztosCfvERw27tCb4LYmYd-x6s8LuD_zYoBA/exec';
+       
         const DATAPIPE_URL = 'https://pipe.jspsych.org/api/data/';
         const EXPERIMENT_ID = 'roHPeHl0eGAg';
         
@@ -1049,25 +997,7 @@
                 return { ok: false, error: String(e) };
             }
         }
-
-        async function postJSON(url, data) {
-            try {
-                const params = new URLSearchParams();
-                Object.keys(data).forEach(key => {
-                    const value = data[key];
-                    params.append(key, value === null || value === undefined ? '' : String(value));
-                });
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-                    body: params.toString()
-                });
-                return { ok: res.ok, status: res.status };
-            } catch (e) {
-                console.error('Failed to POST JSON', e);
-                return { ok: false, error: String(e) };
-            }
-        }
+        
     </script>
 </body>
 </html>
